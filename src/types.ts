@@ -43,6 +43,11 @@ export type Exercise = {
   weight: number;
   completed: boolean;
   instructions?: string[];
+  media?: {
+    url: string;
+    type: "video" | "image";
+    attribution?: string;
+  }[];
 };
 
 export type WorkoutSession = {
