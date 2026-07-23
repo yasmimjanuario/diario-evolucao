@@ -1,6 +1,6 @@
 import type { Exercise } from "../types";
 
-export type ExerciseSuggestion = Pick<Exercise, "name" | "equipment" | "instructions" | "media">;
+export type ExerciseSuggestion = Pick<Exercise, "name" | "muscle" | "equipment" | "instructions" | "media">;
 
 export const searchExerciseLibrary = async (query: string): Promise<ExerciseSuggestion[]> => {
   const response = await fetch(`/api/exercise-media?q=${encodeURIComponent(query)}`);
