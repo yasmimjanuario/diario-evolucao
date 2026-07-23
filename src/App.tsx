@@ -272,6 +272,10 @@ function AuthScreen({ onDemo }: { onDemo: () => void }) {
   const loginEmail = async () => {
     if (!email) return;
     setError("");
+    if (!supabaseConfigured) {
+      setError("O acesso ainda não foi configurado. As variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY estão ausentes no deploy.");
+      return;
+    }
     const { error: authError } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: window.location.origin },
@@ -298,7 +302,7 @@ function AuthScreen({ onDemo }: { onDemo: () => void }) {
       </section>
 
       <section className="auth-form-wrap">
-        <div className="auth-form">
+        <form className="auth-form" onSubmit={(event) => { event.preventDefault(); void loginEmail(); }}>
           <div className="mobile-auth-brand"><Brand /></div>
           <span className="eyebrow neutral">Bem-vinda ao Evolua</span>
           <h2>Comece seu diário</h2>
@@ -311,13 +315,13 @@ function AuthScreen({ onDemo }: { onDemo: () => void }) {
                 <span>Seu e-mail</span>
                 <div className="input-with-icon"><Mail size={18} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@email.com" /></div>
               </label>
-              <button className="primary-button" onClick={loginEmail} disabled={!email || !supabaseConfigured}>Enviar link de acesso <ArrowRight size={18} /></button>
+              <button type="submit" className="primary-button" disabled={!email}>Enviar link de acesso <ArrowRight size={18} /></button>
             </>
           )}
           {error && <p className="form-error">{error}</p>}
           <button className="text-button" onClick={onDemo}>Explorar demonstração</button>
           <small className="privacy-copy">Ao entrar, você concorda com os termos e a política de privacidade. Seus dados de saúde ficam protegidos.</small>
-        </div>
+        </form>
       </section>
     </div>
   );
