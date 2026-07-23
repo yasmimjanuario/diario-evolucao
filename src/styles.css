@@ -73,6 +73,8 @@ svg { width: 20px; height: 20px; stroke-width: 1.8; }
 .input-with-icon svg { position: absolute; left: 14px; top: 14px; color: #8e9a93; }
 .input-with-icon input { padding-left: 42px; }
 .auth-form .primary-button { width: 100%; margin-top: 13px; }
+.auth-actions { display: flex; justify-content: space-between; gap: 12px; margin: 16px 0; }
+.auth-actions .text-button { padding: 0; font-size: 12px; }
 .text-button { border: 0; background: transparent; color: var(--green); font-weight: 700; display: block; margin: 18px auto; }
 .privacy-copy { display: block; color: #9aa39e; text-align: center; line-height: 1.5; }
 .success-message { display: flex; gap: 13px; padding: 16px; background: #edf5e8; border-radius: 14px; color: var(--forest); }
