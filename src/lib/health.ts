@@ -37,10 +37,47 @@ const library: Exercise[] = [
   { id: "leg-press", name: "Leg press", muscle: "Pernas", equipment: "Leg press", sets: 3, reps: "10–12", restSeconds: 90, met: 5.5, weight: 30, completed: false },
   { id: "bike", name: "Bicicleta ergométrica", muscle: "Cardio", equipment: "Bicicleta", sets: 1, reps: "12 min", restSeconds: 0, met: 5.8, weight: 0, completed: false },
   { id: "walker", name: "Transport / Air walker", muscle: "Cardio", equipment: "Transport", sets: 1, reps: "10 min", restSeconds: 0, met: 5, weight: 0, completed: false },
+  { id: "treadmill", name: "Caminhada na esteira", muscle: "Cardio", equipment: "Esteira", sets: 1, reps: "12 min", restSeconds: 0, met: 4.8, weight: 0, completed: false },
+  { id: "elliptical", name: "Elíptico", muscle: "Cardio", equipment: "Elíptico", sets: 1, reps: "10 min", restSeconds: 0, met: 5.2, weight: 0, completed: false },
+  { id: "cable-row", name: "Remada baixa no cabo", muscle: "Costas", equipment: "Remada baixa", sets: 3, reps: "10–12", restSeconds: 75, met: 5, weight: 15, completed: false },
+  { id: "chest-press", name: "Supino na máquina", muscle: "Peito", equipment: "Supino máquina", sets: 3, reps: "10–12", restSeconds: 75, met: 5, weight: 10, completed: false },
+  { id: "leg-extension", name: "Cadeira extensora", muscle: "Pernas", equipment: "Cadeira extensora", sets: 3, reps: "10–12", restSeconds: 60, met: 4.5, weight: 10, completed: false },
+  { id: "leg-curl", name: "Mesa flexora", muscle: "Posterior", equipment: "Mesa flexora", sets: 3, reps: "10–12", restSeconds: 60, met: 4.5, weight: 10, completed: false },
+  { id: "abductor", name: "Cadeira abdutora", muscle: "Glúteos", equipment: "Cadeira abdutora", sets: 3, reps: "12–15", restSeconds: 60, met: 4, weight: 15, completed: false },
+  { id: "total-crunch", name: "Total Crunch", muscle: "Corpo inteiro", equipment: "Total Crunch", sets: 3, reps: "10–12", restSeconds: 60, met: 5, weight: 0, completed: false },
 ];
 
+const normalize = (value: string) =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+const equipmentAliases: Record<string, string[]> = {
+  Halteres: ["halter", "halteres", "peso livre", "pesos"],
+  Puxador: ["puxador", "puxador alto", "pulley", "lat pulldown", "maquina de costas"],
+  "Leg press": ["leg press", "legpress"],
+  Bicicleta: ["bicicleta", "bike", "bicicleta ergometrica"],
+  Transport: ["transport", "air walker", "simulador de caminhada"],
+  Elíptico: ["eliptico", "elliptical"],
+  Esteira: ["esteira", "treadmill"],
+  "Remada baixa": ["remada baixa", "remada sentada", "cabo de remada"],
+  "Supino máquina": ["supino maquina", "chest press", "maquina de peito"],
+  "Cadeira extensora": ["cadeira extensora", "extensora"],
+  "Mesa flexora": ["mesa flexora", "cadeira flexora", "flexora"],
+  "Cadeira abdutora": ["cadeira abdutora", "abdutora"],
+  "Total Crunch": ["total crunch"],
+  Elásticos: ["elasticos", "elastico", "faixa elastica", "mini band", "theraband"],
+};
+
+export const understandEquipment = (input: string) => {
+  const normalized = normalize(input);
+  const match = Object.entries(equipmentAliases).find(([canonical, aliases]) =>
+    normalize(canonical) === normalized || aliases.some((alias) => normalized.includes(normalize(alias))),
+  );
+  return match?.[0] ?? input.trim().replace(/\s+/g, " ");
+};
+
 export const generateWorkout = (profile: Profile) => {
-  const allowed = new Set(["Peso corporal", ...profile.equipment]);
+  const understood = profile.equipment.map(understandEquipment);
+  const allowed = new Set(["Peso corporal", ...understood]);
   const selected = library.filter((exercise) => allowed.has(exercise.equipment));
   const balanced: Exercise[] = [];
   for (const group of ["Pernas", "Costas", "Peito", "Glúteos", "Ombros", "Posterior", "Cardio"]) {
