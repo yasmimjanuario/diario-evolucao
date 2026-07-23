@@ -44,6 +44,7 @@ import {
   proteinTarget,
 } from "./lib/health";
 import { addMeal, saveProfile, saveWater, saveWeight } from "./lib/store";
+import { estimateNutrition } from "./lib/nutrition";
 import type { Exercise, Meal, Profile, Tab, WorkoutSession } from "./types";
 
 const defaultProfile: Profile = {
@@ -522,16 +523,40 @@ function ProfileView({ profile, setProfile, waterGoal, setWaterGoal, onSave, onL
 
 function MealModal({ onClose, onSave }: { onClose: () => void; onSave: (meal: Meal) => void }) {
   const [name, setName] = useState("");
+  const [grams, setGrams] = useState("");
   const [protein, setProtein] = useState(0);
   const [calories, setCalories] = useState(0);
+  const estimate = useMemo(
+    () => estimateNutrition(name, grams ? Number(grams) : undefined),
+    [name, grams],
+  );
+
+  useEffect(() => {
+    setProtein(estimate?.protein ?? 0);
+    setCalories(estimate?.calories ?? 0);
+  }, [estimate]);
+
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-heading"><div><span className="modal-icon"><Utensils /></span><div><span className="eyebrow neutral">Diário alimentar</span><h2>Adicionar refeição</h2></div></div><button onClick={onClose} aria-label="Fechar"><X /></button></div>
-        <p>Registre os valores do rótulo ou da sua estimativa. Em breve, a IA poderá reconhecer a refeição por foto ou descrição.</p>
-        <label className="field"><span>O que você comeu?</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: frango grelhado com legumes" /></label>
-        <div className="form-grid"><label className="field"><span>Proteína (g)</span><input type="number" min="0" value={protein} onChange={(event) => setProtein(Number(event.target.value))} /></label><label className="field"><span>Calorias (kcal)</span><input type="number" min="0" value={calories} onChange={(event) => setCalories(Number(event.target.value))} /></label></div>
-        <div className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!name} onClick={() => onSave({ id: crypto.randomUUID(), name, protein, calories, time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) })}>Adicionar <Plus /></button></div>
+        <p>Descreva do seu jeito. O Evolua estima os nutrientes e informa a porção considerada; você só ajusta se precisar.</p>
+        <label className="field"><span>O que você comeu?</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: frango grelhado pequeno" /></label>
+        <label className="field optional-grams"><span>Peso aproximado (opcional)</span><div className="input-suffix"><input type="number" min="1" value={grams} onChange={(event) => setGrams(event.target.value)} placeholder="Se souber" /><b>g</b></div></label>
+        {name && estimate ? (
+          <div className="nutrition-estimate">
+            <div className="estimate-heading"><Sparkles /><div><strong>Estimativa nutricional</strong><span>{estimate.servingLabel}</span></div><small>confiança {estimate.confidence}</small></div>
+            <div className="estimate-values"><div><strong>{protein} g</strong><span>Proteína</span></div><div><strong>{calories} kcal</strong><span>Calorias</span></div></div>
+            <p>Identificado: {estimate.matchedFoods.join(", ")}. Os valores são aproximados e podem variar pelo preparo.</p>
+          </div>
+        ) : name ? (
+          <div className="estimate-empty">Não reconheci esse alimento ainda. Informe os valores abaixo para salvar e melhorar o registro.</div>
+        ) : null}
+        <details className="manual-nutrition" open={Boolean(name && !estimate)}>
+          <summary>Ajustar valores manualmente</summary>
+          <div className="form-grid"><label className="field"><span>Proteína (g)</span><input type="number" min="0" value={protein} onChange={(event) => setProtein(Number(event.target.value))} /></label><label className="field"><span>Calorias (kcal)</span><input type="number" min="0" value={calories} onChange={(event) => setCalories(Number(event.target.value))} /></label></div>
+        </details>
+        <div className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!name || (!estimate && protein === 0 && calories === 0)} onClick={() => onSave({ id: crypto.randomUUID(), name, protein, calories, time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) })}>Adicionar <Plus /></button></div>
       </div>
     </div>
   );
