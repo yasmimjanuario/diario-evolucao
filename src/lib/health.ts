@@ -1,7 +1,7 @@
 import type { Exercise, Profile } from "../types";
 
 export const calculateAge = (birthDate: string) => {
-  if (!birthDate) return 30;
+  if (!birthDate) return 0;
   const birth = new Date(`${birthDate}T00:00:00`);
   const now = new Date();
   let age = now.getFullYear() - birth.getFullYear();
@@ -14,6 +14,7 @@ export const calculateBmi = (weightKg: number, heightCm: number) =>
   heightCm > 0 ? weightKg / (heightCm / 100) ** 2 : 0;
 
 export const bmiLabel = (bmi: number) => {
+  if (!bmi) return "Preencha seus dados";
   if (bmi < 18.5) return "Abaixo do ideal";
   if (bmi < 25) return "Faixa saudável";
   if (bmi < 30) return "Sobrepeso";
