@@ -15,9 +15,15 @@ create table if not exists public.profiles (
   equipment text[] not null default '{}',
   limitations text not null default '',
   water_goal_ml integer not null default 2000 check (water_goal_ml between 250 and 10000),
+  protein_goal_g integer not null default 100 check (protein_goal_g between 10 and 500),
+  weekly_exercise_minutes integer not null default 150 check (weekly_exercise_minutes between 10 and 3000),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Migração segura para projetos que já executaram uma versão anterior do schema.
+alter table public.profiles add column if not exists protein_goal_g integer not null default 100;
+alter table public.profiles add column if not exists weekly_exercise_minutes integer not null default 150;
 
 create table if not exists public.weight_logs (
   id uuid primary key default gen_random_uuid(),
