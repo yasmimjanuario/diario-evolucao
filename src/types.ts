@@ -14,6 +14,7 @@ export type Profile = {
   waterGoalMl: number;
   proteinGoalG: number;
   weeklyExerciseMinutes: number;
+  onboardingCompleted: boolean;
 };
 
 export type Meal = {
@@ -22,6 +23,12 @@ export type Meal = {
   protein: number;
   calories: number;
   time: string;
+};
+
+export type WeightLog = {
+  id?: string;
+  weight: number;
+  date: string;
 };
 
 export type Exercise = {
