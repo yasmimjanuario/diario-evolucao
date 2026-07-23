@@ -29,6 +29,7 @@ import {
   Sparkles,
   Target,
   TimerReset,
+  Trash2,
   TrendingDown,
   Trophy,
   UserRound,
@@ -256,6 +257,12 @@ function App() {
     setExercises((current) => current.map((exercise) => (exercise.id === id ? { ...exercise, ...changes } : exercise)));
   };
 
+  const removeExercise = (id: string) => {
+    const exercise = exercises.find((item) => item.id === id);
+    if (!exercise || !window.confirm(`Remover “${exercise.name}” deste treino?`)) return;
+    setExercises((current) => current.filter((item) => item.id !== id));
+  };
+
   const regenerateWorkout = async () => {
     if (generatingWorkout) return;
     setGeneratingWorkout(true);
@@ -264,7 +271,12 @@ function App() {
       setExercises(await generateAiWorkout(profile));
       setWorkout({ startedAt: null, elapsedSeconds: 0, running: false });
     } catch (error) {
-      setWorkoutError(error instanceof Error ? error.message : "Não foi possível gerar o plano.");
+      const fallback = generateWorkout(profile);
+      setExercises(fallback);
+      void enrichExercisesWithMedia(fallback).then(setExercises);
+      setWorkout({ startedAt: null, elapsedSeconds: 0, running: false });
+      const message = error instanceof Error ? error.message : "Não foi possível gerar o plano.";
+      setWorkoutError(`${message} Usamos um plano seguro do Evolua enquanto isso.`);
     } finally {
       setGeneratingWorkout(false);
     }
@@ -307,6 +319,7 @@ function App() {
             goals={weeklyGoals}
             onWater={changeWater}
             onMeal={() => setShowMeal(true)}
+            onWeight={() => setShowWeight(true)}
             onWorkout={() => setTab("treino")}
           />
         )}
@@ -318,6 +331,7 @@ function App() {
             calories={caloriesBurned}
             weightKg={profile.weightKg}
             updateExercise={updateExercise}
+            removeExercise={removeExercise}
             onToggleTimer={() =>
               setWorkout((current) => ({
                 ...current,
@@ -616,6 +630,7 @@ function TodayView(props: {
   goals: { label: string; value: number; goal: number; icon: typeof Dumbbell }[];
   onWater: (value: number) => void;
   onMeal: () => void;
+  onWeight: () => void;
   onWorkout: () => void;
 }) {
   const remaining = Math.max(0, props.profile.weightKg - props.profile.goalWeightKg);
@@ -631,6 +646,7 @@ function TodayView(props: {
           <span className="soft-label"><Target size={15} /> Rumo à sua meta</span>
           <h2>{props.profile.weightKg.toFixed(1).replace(".", ",")} <small>kg</small></h2>
           <p>Faltam <strong>{remaining.toFixed(1).replace(".", ",")} kg</strong> para sua meta de {props.profile.goalWeightKg} kg</p>
+          <button type="button" className="hero-weight-button" onClick={props.onWeight}><Scale /> Registrar novo peso</button>
         </div>
         <div className="weight-journey">
           <div className="journey-labels"><span>Início <strong>{props.profile.weightKg.toFixed(1).replace(".", ",")} kg</strong></span><span>Meta <strong>{props.profile.goalWeightKg} kg</strong></span></div>
@@ -682,12 +698,13 @@ function MetricCard({ icon: Icon, tone, label, value, meta, progress, action, fo
   );
 }
 
-function WorkoutView({ exercises, workout, calories, updateExercise, onToggleTimer, onReset, onRegenerate, generating, error, onAddExercise }: {
+function WorkoutView({ exercises, workout, calories, updateExercise, removeExercise, onToggleTimer, onReset, onRegenerate, generating, error, onAddExercise }: {
   exercises: Exercise[];
   workout: WorkoutSession;
   calories: number;
   weightKg: number;
   updateExercise: (id: string, changes: Partial<Exercise>) => void;
+  removeExercise: (id: string) => void;
   onToggleTimer: () => void;
   onReset: () => void;
   onRegenerate: () => Promise<void>;
@@ -719,7 +736,7 @@ function WorkoutView({ exercises, workout, calories, updateExercise, onToggleTim
           <article className={`exercise-card ${exercise.completed ? "completed" : ""}`} key={exercise.id}>
             <button className="exercise-check" onClick={() => updateExercise(exercise.id, { completed: !exercise.completed })} aria-label="Marcar exercício">{exercise.completed ? <Check /> : index + 1}</button>
             <div className="exercise-main">
-              <div className="exercise-title"><div><span>{exercise.muscle} • {exercise.equipment}</span><h3>{exercise.name}</h3></div><span className="rest-time"><Clock3 /> {exercise.restSeconds ? `${exercise.restSeconds}s` : "contínuo"}</span></div>
+              <div className="exercise-title"><div><span>{exercise.muscle} • {exercise.equipment}</span><h3>{exercise.name}</h3></div><div className="exercise-card-actions"><span className="rest-time"><Clock3 /> {exercise.restSeconds ? `${exercise.restSeconds}s` : "contínuo"}</span><button type="button" className="remove-exercise" onClick={() => removeExercise(exercise.id)} aria-label={`Remover ${exercise.name}`} title="Remover exercício"><Trash2 /></button></div></div>
               <div className="exercise-prescription">
                 <div><span>Séries</span><strong>{exercise.sets}</strong></div>
                 <div><span>Repetições</span><strong>{exercise.reps}</strong></div>
@@ -762,23 +779,47 @@ function ExerciseModal({ onClose, onAdd }: { onClose: () => void; onAdd: (exerci
   const [instructions, setInstructions] = useState("");
   const [suggestions, setSuggestions] = useState<ExerciseSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
+  const [exerciseSearchFinished, setExerciseSearchFinished] = useState(false);
+  const [exerciseSearchFailed, setExerciseSearchFailed] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<Exercise["media"]>([]);
 
   useEffect(() => {
     if (name.trim().length < 3) {
       setSuggestions([]);
+      setSearching(false);
+      setExerciseSearchFinished(false);
+      setExerciseSearchFailed(false);
       return;
     }
-    const timer = window.setTimeout(async () => {
-      setSearching(true);
-      setSuggestions(await searchExerciseLibrary(name.trim()));
-      setSearching(false);
+    let active = true;
+    setSuggestions([]);
+    setSearching(true);
+    setExerciseSearchFinished(false);
+    setExerciseSearchFailed(false);
+    const timer = window.setTimeout(() => {
+      searchExerciseLibrary(name.trim())
+        .then((results) => {
+          if (!active) return;
+          setSuggestions(results);
+          setExerciseSearchFinished(true);
+        })
+        .catch(() => {
+          if (!active) return;
+          setSuggestions([]);
+          setExerciseSearchFailed(true);
+          setExerciseSearchFinished(true);
+        })
+        .finally(() => active && setSearching(false));
     }, 500);
-    return () => window.clearTimeout(timer);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [name]);
 
   const choose = (suggestion: ExerciseSuggestion) => {
     setName(suggestion.name);
+    if (suggestion.muscle) setMuscle(suggestion.muscle);
     if (suggestion.equipment) setEquipment(suggestion.equipment);
     setInstructions(suggestion.instructions?.join("\n") ?? "");
     setSelectedMedia(suggestion.media ?? []);
@@ -794,12 +835,15 @@ function ExerciseModal({ onClose, onAdd }: { onClose: () => void; onAdd: (exerci
         <p>Digite para buscar na biblioteca pública ou preencha manualmente.</p>
         <div className="exercise-search-field">
           <label className="field"><span>Nome do exercício</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: cadeira extensora" autoFocus /></label>
-          {searching && <small>Buscando demonstrações…</small>}
-          {suggestions.length > 0 && <div className="exercise-suggestions">{suggestions.map((suggestion) => (
-            <button type="button" key={`${suggestion.name}-${suggestion.equipment}`} onClick={() => choose(suggestion)}>
-              <strong>{suggestion.name}</strong><span>{suggestion.equipment || "Equipamento não informado"} • {suggestion.media?.length ? "com demonstração" : "sem mídia"}</span>
-            </button>
-          ))}</div>}
+          {name.trim().length >= 3 && <div className="exercise-suggestions" role="listbox" aria-label="Sugestões de exercícios">
+            {searching && <div className="exercise-searching"><span className="food-spinner" aria-hidden="true" />Buscando “{name.trim()}” na biblioteca de exercícios…</div>}
+            {!searching && suggestions.map((suggestion) => (
+              <button type="button" key={`${suggestion.name}-${suggestion.equipment}`} onClick={() => choose(suggestion)}>
+                <strong>{suggestion.name}</strong><span>{suggestion.muscle || "Grupo muscular não informado"} • {suggestion.equipment || "Sem equipamento"} • {suggestion.media?.length ? "com demonstração" : "sem mídia"}</span>
+              </button>
+            ))}
+            {!searching && exerciseSearchFinished && suggestions.length === 0 && <div className="exercise-not-found"><strong>{exerciseSearchFailed ? "Não foi possível consultar a biblioteca agora" : "Exercício não encontrado na base"}</strong><span>Você pode preencher os dados abaixo e adicionar “{name.trim()}” manualmente.</span><button type="button" onClick={() => setExerciseSearchFinished(false)}>Continuar manualmente</button></div>}
+          </div>}
         </div>
         <div className="form-grid">
           <label className="field"><span>Grupo muscular</span><input value={muscle} onChange={(event) => setMuscle(event.target.value)} placeholder="Ex.: Pernas" /></label>
@@ -944,6 +988,9 @@ function MealModal({ onClose, onSave }: { onClose: () => void; onSave: (meal: Me
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [publicSuggestions, setPublicSuggestions] = useState<PublicFoodSuggestion[]>([]);
   const [searchingFoods, setSearchingFoods] = useState(false);
+  const [foodSearchFinished, setFoodSearchFinished] = useState(false);
+  const [foodSearchFailed, setFoodSearchFailed] = useState(false);
+  const [manualNutrition, setManualNutrition] = useState(false);
   const [selectedPublicFood, setSelectedPublicFood] = useState<PublicFoodSuggestion | null>(null);
   const estimate = useMemo(
     () => estimateNutrition(name, grams ? Number(grams) : undefined),
@@ -965,19 +1012,36 @@ function MealModal({ onClose, onSave }: { onClose: () => void; onSave: (meal: Me
   useEffect(() => {
     if (!showSuggestions || selectedPublicFood || name.trim().length < 3) {
       setPublicSuggestions([]);
+      setSearchingFoods(false);
+      setFoodSearchFinished(false);
+      setFoodSearchFailed(false);
       return;
     }
     const controller = new AbortController();
+    let active = true;
+    setPublicSuggestions([]);
+    setSearchingFoods(true);
+    setFoodSearchFinished(false);
+    setFoodSearchFailed(false);
     const timer = window.setTimeout(() => {
-      setSearchingFoods(true);
       searchPublicFoods(name, controller.signal)
-        .then(setPublicSuggestions)
-        .catch((error) => {
-          if (error instanceof Error && error.name !== "AbortError") setPublicSuggestions([]);
+        .then((results) => {
+          if (!active) return;
+          setPublicSuggestions(results);
+          setFoodSearchFinished(true);
         })
-        .finally(() => setSearchingFoods(false));
+        .catch((error) => {
+          if (!active || (error instanceof Error && error.name === "AbortError")) return;
+          setPublicSuggestions([]);
+          setFoodSearchFailed(true);
+          setFoodSearchFinished(true);
+        })
+        .finally(() => {
+          if (active) setSearchingFoods(false);
+        });
     }, 900);
     return () => {
+      active = false;
       window.clearTimeout(timer);
       controller.abort();
     };
@@ -988,15 +1052,19 @@ function MealModal({ onClose, onSave }: { onClose: () => void; onSave: (meal: Me
       <div className="modal">
         <div className="modal-heading"><div><span className="modal-icon"><Utensils /></span><div><span className="eyebrow neutral">Diário alimentar</span><h2>Adicionar refeição</h2></div></div><button onClick={onClose} aria-label="Fechar"><X /></button></div>
         <p>Descreva do seu jeito. O Evolua estima os nutrientes e informa a porção considerada; você só ajusta se precisar.</p>
-        <label className="field food-search"><span>O que você comeu?</span><input autoFocus autoComplete="off" value={name} onFocus={() => setShowSuggestions(true)} onChange={(event) => { setName(event.target.value); setSelectedPublicFood(null); setShowSuggestions(true); }} placeholder="Ex.: leite integral, frango grelhado..." />
-          {showSuggestions && (searchingFoods || publicSuggestions.length > 0 || suggestions.length > 0) && <div className="food-suggestions">
-            {searchingFoods && <div className="food-searching">Buscando na base nutricional…</div>}
+        <label className="field food-search"><span>O que você comeu?</span><input autoFocus autoComplete="off" value={name} onFocus={() => setShowSuggestions(true)} onChange={(event) => { setName(event.target.value); setSelectedPublicFood(null); setManualNutrition(false); setShowSuggestions(true); }} placeholder="Ex.: leite integral, frango grelhado..." />
+          {showSuggestions && name.trim().length >= 3 && <div className="food-suggestions" role="listbox" aria-label="Sugestões de alimentos">
+            {searchingFoods && <div className="food-searching"><span className="food-spinner" aria-hidden="true" />Buscando “{name.trim()}” na base nutricional…</div>}
             {publicSuggestions.map((suggestion) => <button type="button" key={suggestion.id} onClick={() => { setName(suggestion.label); setGrams(String(suggestion.servingGrams)); setSelectedPublicFood(suggestion); setShowSuggestions(false); }}>
               <span>{suggestion.label}<em>{suggestion.brand}</em></span><small>{suggestion.calories100g} kcal • {suggestion.protein100g} g proteína / 100 g</small>
             </button>)}
             {!searchingFoods && publicSuggestions.length === 0 && suggestions.map((suggestion) => <button type="button" key={`${suggestion.description}-${suggestion.grams}`} onClick={() => { setName(suggestion.description); setGrams(String(suggestion.grams)); setShowSuggestions(false); }}>
               <span>{suggestion.label}<em>Estimativa do Evolua</em></span><small>aprox. {suggestion.grams} g</small>
             </button>)}
+            {!searchingFoods && foodSearchFinished && publicSuggestions.length === 0 && suggestions.length === 0 && <div className="food-not-found">
+              <div><strong>{foodSearchFailed ? "Não foi possível consultar a base agora" : "Não encontrado na base de dados"}</strong><span>Você pode cadastrar “{name.trim()}” manualmente.</span></div>
+              <button type="button" onClick={() => { setManualNutrition(true); setShowSuggestions(false); }}>Adicionar manualmente <Plus size={16} /></button>
+            </div>}
           </div>}
         </label>
         <label className="field optional-grams"><span>Peso aproximado (opcional)</span><div className="input-suffix"><input type="number" min="1" value={grams} onChange={(event) => setGrams(event.target.value)} placeholder="Se souber" /><b>g</b></div></label>
@@ -1009,7 +1077,7 @@ function MealModal({ onClose, onSave }: { onClose: () => void; onSave: (meal: Me
         ) : name ? (
           <div className="estimate-empty">Não reconheci esse alimento ainda. Informe os valores abaixo para salvar e melhorar o registro.</div>
         ) : null}
-        <details className="manual-nutrition" open={Boolean(name && !estimate)}>
+        <details className="manual-nutrition" open={manualNutrition || Boolean(name && !estimate)}>
           <summary>Ajustar valores manualmente</summary>
           <div className="form-grid"><label className="field"><span>Proteína (g)</span><input type="number" min="0" value={protein} onChange={(event) => setProtein(Number(event.target.value))} /></label><label className="field"><span>Calorias (kcal)</span><input type="number" min="0" value={calories} onChange={(event) => setCalories(Number(event.target.value))} /></label></div>
         </details>
