@@ -152,6 +152,17 @@ alter table public.workout_sessions enable row level security;
 alter table public.weekly_goals enable row level security;
 alter table public.user_badges enable row level security;
 
+-- As políticas não aceitam "create if not exists". Removê-las antes torna
+-- este schema repetível sem apagar tabelas ou dados.
+drop policy if exists "own profile" on public.profiles;
+drop policy if exists "own weights" on public.weight_logs;
+drop policy if exists "own water" on public.water_logs;
+drop policy if exists "own meals" on public.meal_logs;
+drop policy if exists "own plans" on public.workout_plans;
+drop policy if exists "own sessions" on public.workout_sessions;
+drop policy if exists "own goals" on public.weekly_goals;
+drop policy if exists "own earned badges" on public.user_badges;
+
 create policy "own profile" on public.profiles for all using (auth.uid() = id) with check (auth.uid() = id);
 create policy "own weights" on public.weight_logs for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own water" on public.water_logs for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
@@ -163,6 +174,7 @@ create policy "own earned badges" on public.user_badges for all using (auth.uid(
 
 -- Catálogo de medalhas pode ser lido por pessoas autenticadas.
 alter table public.badges enable row level security;
+drop policy if exists "authenticated can read badges" on public.badges;
 create policy "authenticated can read badges" on public.badges for select to authenticated using (true);
 
 create index if not exists weight_logs_user_date_idx on public.weight_logs (user_id, logged_on desc);
