@@ -1,4 +1,4 @@
-import { generateText, Output } from "ai";
+import { APICallError, generateText, Output } from "ai";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
@@ -121,14 +121,39 @@ export default async function handler(request: ApiRequest, response: ApiResponse
 
     response.status(200).json(output);
   } catch (error) {
-    const statusCode = typeof error === "object" && error && "statusCode" in error
-      ? Number((error as { statusCode?: number }).statusCode)
-      : 500;
+    const statusCode = APICallError.isInstance(error)
+      ? error.statusCode
+      : typeof error === "object" && error && "statusCode" in error
+        ? Number((error as { statusCode?: number }).statusCode)
+        : 500;
+    const requestId = APICallError.isInstance(error)
+      ? error.responseHeaders?.["x-request-id"]
+      : undefined;
+    console.error("generate-workout failed", {
+      statusCode,
+      requestId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    if (statusCode === 401 || statusCode === 403) {
+      response.status(503).json({ error: "A IA está sem autorização no AI Gateway. Verifique a variável AI_GATEWAY_API_KEY na Vercel e faça um novo deploy." });
+      return;
+    }
+    if (statusCode === 402) {
+      response.status(503).json({ error: "Os créditos do AI Gateway acabaram ou o limite de gastos foi atingido." });
+      return;
+    }
+    if (statusCode === 404) {
+      response.status(503).json({ error: "O modelo de IA configurado não está disponível no AI Gateway." });
+      return;
+    }
     if (statusCode === 429) {
       response.status(429).json({ error: "Limite temporário da IA atingido. Tente novamente em alguns minutos." });
       return;
     }
-    console.error("generate-workout failed", error);
-    response.status(500).json({ error: "A IA não conseguiu gerar o plano agora. Tente novamente." });
+    if (statusCode === 400 || statusCode === 422) {
+      response.status(503).json({ error: "A IA respondeu em um formato inválido. Tente gerar novamente." });
+      return;
+    }
+    response.status(503).json({ error: `A IA está temporariamente indisponível${requestId ? ` (referência ${requestId})` : ""}.` });
   }
 }
