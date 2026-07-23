@@ -33,6 +33,7 @@ import {
   Trophy,
   UserRound,
   Utensils,
+  Video,
   Weight,
   X,
 } from "lucide-react";
@@ -50,6 +51,7 @@ import { addMeal, loadUserData, saveProfile, saveWater, saveWeight } from "./lib
 import { estimateNutrition, getFoodSuggestions } from "./lib/nutrition";
 import { searchPublicFoods, type PublicFoodSuggestion } from "./lib/foodApi";
 import { generateAiWorkout } from "./lib/workoutAi";
+import { searchExerciseLibrary, type ExerciseSuggestion } from "./lib/exerciseMedia";
 import type { Exercise, Meal, Profile, Tab, WeightLog, WorkoutSession } from "./types";
 
 const emptyProfile: Profile = {
@@ -146,6 +148,7 @@ function App() {
   const [showMeal, setShowMeal] = useState(false);
   const [generatingWorkout, setGeneratingWorkout] = useState(false);
   const [workoutError, setWorkoutError] = useState("");
+  const [showExercise, setShowExercise] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -320,6 +323,7 @@ function App() {
             onRegenerate={regenerateWorkout}
             generating={generatingWorkout}
             error={workoutError}
+            onAddExercise={() => setShowExercise(true)}
           />
         )}
 
@@ -340,6 +344,15 @@ function App() {
           />
         )}
       </main>
+      {showExercise && (
+        <ExerciseModal
+          onClose={() => setShowExercise(false)}
+          onAdd={(exercise) => {
+            setExercises((current) => [...current, exercise]);
+            setShowExercise(false);
+          }}
+        />
+      )}
 
       <nav className="mobile-nav">
         {(["hoje", "treino", "progresso", "perfil"] as Tab[]).map((item) => <NavButton key={item} tab={item} active={tab === item} onClick={setTab} />)}
@@ -663,7 +676,7 @@ function MetricCard({ icon: Icon, tone, label, value, meta, progress, action, fo
   );
 }
 
-function WorkoutView({ exercises, workout, calories, updateExercise, onToggleTimer, onReset, onRegenerate, generating, error }: {
+function WorkoutView({ exercises, workout, calories, updateExercise, onToggleTimer, onReset, onRegenerate, generating, error, onAddExercise }: {
   exercises: Exercise[];
   workout: WorkoutSession;
   calories: number;
@@ -674,6 +687,7 @@ function WorkoutView({ exercises, workout, calories, updateExercise, onToggleTim
   onRegenerate: () => Promise<void>;
   generating: boolean;
   error: string;
+  onAddExercise: () => void;
 }) {
   return (
     <div className="page">
@@ -711,11 +725,100 @@ function WorkoutView({ exercises, workout, calories, updateExercise, onToggleTim
                   <ol>{exercise.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}</ol>
                 </details>
               ) : null}
+              {exercise.media?.length ? (
+                <details className="exercise-media">
+                  <summary><Video size={17} /> Ver demonstração</summary>
+                  <div className="exercise-media-grid">
+                    {exercise.media.map((media) => media.type === "video"
+                      ? <video key={media.url} controls playsInline preload="metadata" src={media.url} />
+                      : <img key={media.url} src={media.url} alt={`Execução de ${exercise.name}`} loading="lazy" />)}
+                  </div>
+                  <small>Mídia: {exercise.media[0].attribution ?? "biblioteca pública"}</small>
+                </details>
+              ) : <span className="media-unavailable">Demonstração ainda não encontrada na biblioteca pública.</span>}
             </div>
           </article>
         ))}
       </section>
+      <button className="add-exercise-button" type="button" onClick={onAddExercise}><Plus /> Adicionar exercício</button>
       <div className="safety-note"><Activity /><p><strong>Escute seu corpo.</strong> Pare se sentir dor, tontura ou falta de ar fora do esperado. O plano não substitui avaliação profissional.</p></div>
+    </div>
+  );
+}
+
+function ExerciseModal({ onClose, onAdd }: { onClose: () => void; onAdd: (exercise: Exercise) => void }) {
+  const [name, setName] = useState("");
+  const [equipment, setEquipment] = useState("Peso corporal");
+  const [muscle, setMuscle] = useState("");
+  const [sets, setSets] = useState(3);
+  const [reps, setReps] = useState("10–12");
+  const [restSeconds, setRestSeconds] = useState(60);
+  const [instructions, setInstructions] = useState("");
+  const [suggestions, setSuggestions] = useState<ExerciseSuggestion[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<Exercise["media"]>([]);
+
+  useEffect(() => {
+    if (name.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      setSearching(true);
+      setSuggestions(await searchExerciseLibrary(name.trim()));
+      setSearching(false);
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [name]);
+
+  const choose = (suggestion: ExerciseSuggestion) => {
+    setName(suggestion.name);
+    if (suggestion.equipment) setEquipment(suggestion.equipment);
+    setInstructions(suggestion.instructions?.join("\n") ?? "");
+    setSelectedMedia(suggestion.media ?? []);
+    setSuggestions([]);
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="modal exercise-modal" role="dialog" aria-modal="true" aria-labelledby="exercise-modal-title">
+        <button className="modal-close" onClick={onClose} aria-label="Fechar"><X /></button>
+        <span className="eyebrow neutral">Treino personalizado</span>
+        <h2 id="exercise-modal-title">Adicionar exercício</h2>
+        <p>Digite para buscar na biblioteca pública ou preencha manualmente.</p>
+        <div className="exercise-search-field">
+          <label className="field"><span>Nome do exercício</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: cadeira extensora" autoFocus /></label>
+          {searching && <small>Buscando demonstrações…</small>}
+          {suggestions.length > 0 && <div className="exercise-suggestions">{suggestions.map((suggestion) => (
+            <button type="button" key={`${suggestion.name}-${suggestion.equipment}`} onClick={() => choose(suggestion)}>
+              <strong>{suggestion.name}</strong><span>{suggestion.equipment || "Equipamento não informado"} • {suggestion.media?.length ? "com demonstração" : "sem mídia"}</span>
+            </button>
+          ))}</div>}
+        </div>
+        <div className="form-grid">
+          <label className="field"><span>Grupo muscular</span><input value={muscle} onChange={(event) => setMuscle(event.target.value)} placeholder="Ex.: Pernas" /></label>
+          <label className="field"><span>Equipamento</span><input value={equipment} onChange={(event) => setEquipment(event.target.value)} /></label>
+          <label className="field"><span>Séries</span><input type="number" min="1" max="10" value={sets} onChange={(event) => setSets(Number(event.target.value))} /></label>
+          <label className="field"><span>Repetições/tempo</span><input value={reps} onChange={(event) => setReps(event.target.value)} placeholder="10–12 ou 2 min" /></label>
+          <label className="field"><span>Descanso (segundos)</span><input type="number" min="0" max="600" value={restSeconds} onChange={(event) => setRestSeconds(Number(event.target.value))} /></label>
+          <label className="field wide"><span>Instruções (uma por linha)</span><textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Opcional" /></label>
+        </div>
+        {selectedMedia?.length ? <div className="media-found"><Check /> Demonstração encontrada e será adicionada.</div> : null}
+        <button className="primary-button modal-submit" type="button" disabled={!name.trim()} onClick={() => onAdd({
+          id: `manual-${Date.now()}`,
+          name: name.trim(),
+          muscle: muscle.trim() || "Personalizado",
+          equipment: equipment.trim() || "Peso corporal",
+          sets: Math.max(1, sets || 1),
+          reps: reps.trim() || "livre",
+          restSeconds: Math.max(0, restSeconds || 0),
+          met: 4,
+          weight: 0,
+          completed: false,
+          instructions: instructions.split("\n").map((line) => line.trim()).filter(Boolean),
+          media: selectedMedia,
+        })}><Plus /> Adicionar ao treino</button>
+      </section>
     </div>
   );
 }
