@@ -257,6 +257,15 @@ svg { width: 20px; height: 20px; stroke-width: 1.8; }
 .equipment-options button { min-height: 39px; border-radius: 11px; border: 1px solid var(--line); background: white; color: #637168; padding: 0 13px; display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; }
 .equipment-options button.selected { background: #e9f0e4; color: var(--forest); border-color: #bfcfba; }
 .equipment-options svg { width: 14px; }
+.equipment-entry { margin-top: 13px; max-width: 650px; }
+.equipment-entry .input-suffix { padding-right: 5px; }
+.equipment-entry .input-suffix input { min-width: 0; }
+.equipment-entry .input-suffix button { flex: 0 0 auto; border: 0; border-radius: 8px; background: var(--forest); color: white; min-height: 36px; padding: 0 11px; display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; }
+.equipment-entry .input-suffix button svg { width: 14px; }
+.equipment-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.equipment-tags > span { border: 1px solid #bfd0ba; background: #edf3e9; color: var(--forest); border-radius: 999px; padding: 6px 6px 6px 10px; display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600; }
+.equipment-tags button { border: 0; background: transparent; color: var(--muted); padding: 0; width: 20px; height: 20px; display: grid; place-items: center; }
+.equipment-tags svg { width: 12px; }
 .save-profile { margin: 28px 0 0 auto; }
 .logout-button { background: transparent; color: #9a5959; border: 1px solid #e8d4d4; border-radius: 11px; padding: 9px 13px; display: flex; gap: 7px; align-items: center; font-weight: 600; font-size: 11px; }
 .logout-button svg { width: 16px; }
