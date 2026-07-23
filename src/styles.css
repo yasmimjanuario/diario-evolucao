@@ -58,10 +58,8 @@ svg { width: 20px; height: 20px; stroke-width: 1.8; }
 .mobile-auth-brand { display: none; }
 .auth-form h2 { font-size: 38px; letter-spacing: -1.6px; margin: 10px 0 8px; color: var(--forest); }
 .auth-form > p { color: var(--muted); margin: 0 0 30px; }
-.google-button, .primary-button, .secondary-button { border-radius: 14px; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 0 18px; font-weight: 700; border: 1px solid var(--line); transition: .2s ease; }
-.google-button { width: 100%; background: white; color: var(--ink); }
-.google-button:hover, .secondary-button:hover { border-color: #b8c7be; transform: translateY(-1px); }
-.google-g { font-size: 20px; color: #4285f4; font-weight: 700; }
+.primary-button, .secondary-button { border-radius: 14px; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 0 18px; font-weight: 700; border: 1px solid var(--line); transition: .2s ease; }
+.secondary-button:hover { border-color: #b8c7be; transform: translateY(-1px); }
 .primary-button { background: var(--forest); border-color: var(--forest); color: white; }
 .primary-button:hover { background: #26493a; transform: translateY(-1px); }
 .secondary-button { background: #fff; color: var(--forest); }
