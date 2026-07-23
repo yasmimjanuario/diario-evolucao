@@ -29,6 +29,12 @@ const searchAliases: Record<string, { search: string; name: string }> = {
   esteira: { search: "treadmill", name: "Caminhada na esteira" },
   bicicleta: { search: "cycling", name: "Bicicleta ergométrica" },
 };
+const findAlias = (query: string) => {
+  const normalized = query.toLocaleLowerCase("pt-BR").trim();
+  return Object.entries(searchAliases).find(([term]) =>
+    normalized.includes(term) || (normalized.length >= 3 && term.startsWith(normalized))
+  )?.[1];
+};
 const absoluteUrl = (value: unknown) => {
   const url = text(value);
   if (!url) return "";
@@ -69,13 +75,13 @@ export default async function handler(request: ApiRequest, response: ApiResponse
 
   try {
     const normalizedQuery = query.toLocaleLowerCase("pt-BR");
-    const alias = Object.entries(searchAliases).find(([term]) => normalizedQuery.includes(term))?.[1];
+    const alias = findAlias(normalizedQuery);
     const publicQuery = alias?.search ?? query;
 
     try {
-      const exerciseDbUrl = new URL("https://oss.exercisedb.dev/api/v1/exercises/search");
-      exerciseDbUrl.searchParams.set("q", publicQuery);
-      exerciseDbUrl.searchParams.set("limit", "12");
+      const exerciseDbUrl = new URL("https://oss.exercisedb.dev/api/v1/exercises");
+      exerciseDbUrl.searchParams.set("name", publicQuery);
+      exerciseDbUrl.searchParams.set("limit", "30");
       const exerciseDbResponse = await fetch(exerciseDbUrl, {
         headers: { Accept: "application/json", "User-Agent": "Evolua/1.0 (public exercise lookup)" },
         signal: AbortSignal.timeout(7000),
@@ -83,7 +89,13 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       if (exerciseDbResponse.ok) {
         const items = arrayFromPayload(await exerciseDbResponse.json());
         const exerciseDbResults = items.flatMap((item, index) => {
-          const name = alias?.name ?? (text(item.name) || text(item.exerciseName));
+          const originalName = text(item.name) || text(item.exerciseName);
+          const normalizedOriginalName = originalName.toLocaleLowerCase("en");
+          const name = alias
+            ? normalizedOriginalName === publicQuery
+              ? alias.name
+              : `${alias.name} — ${originalName}`
+            : originalName;
           if (!name) return [];
           const instructions = stringList(item.instructions)
             .flatMap((instruction) => instruction.split(/\n+/))
@@ -106,6 +118,19 @@ export default async function handler(request: ApiRequest, response: ApiResponse
             instructions,
             media,
           }];
+        }).sort((left, right) => {
+          const leftOriginal = items.find((item) =>
+            (text(item.exerciseId) || text(item.id)) === left.id);
+          const rightOriginal = items.find((item) =>
+            (text(item.exerciseId) || text(item.id)) === right.id);
+          const score = (item?: WgerItem) => {
+            const candidate = text(item?.name || item?.exerciseName).toLocaleLowerCase("en");
+            if (candidate === publicQuery) return 0;
+            if (candidate.startsWith(publicQuery)) return 1;
+            if (candidate.includes(publicQuery)) return 2;
+            return 3;
+          };
+          return score(leftOriginal) - score(rightOriginal);
         });
         if (exerciseDbResults.length) {
           response.status(200).json({ results: exerciseDbResults.slice(0, 8), source: "ExerciseDB" });
