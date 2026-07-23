@@ -41,7 +41,7 @@ import {
   calorieBurn,
   estimatedDailyCalories,
   generateWorkout,
-  proteinTarget,
+  understandEquipment,
 } from "./lib/health";
 import { addMeal, saveProfile, saveWater, saveWeight } from "./lib/store";
 import { estimateNutrition } from "./lib/nutrition";
@@ -57,6 +57,9 @@ const defaultProfile: Profile = {
   activityLevel: "light",
   equipment: ["Halteres", "Puxador", "Bicicleta"],
   limitations: "Baixa resistência cardiovascular",
+  waterGoalMl: 3000,
+  proteinGoalG: 130,
+  weeklyExerciseMinutes: 150,
 };
 
 const formatSeconds = (seconds: number) => {
@@ -75,7 +78,6 @@ function App() {
   const [tab, setTab] = useState<Tab>("hoje");
   const [profile, setProfile] = useState<Profile>(defaultProfile);
   const [water, setWater] = useState(1500);
-  const [waterGoal, setWaterGoal] = useState(3000);
   const [meals, setMeals] = useState<Meal[]>([
     { id: "1", name: "Omelete com queijo", protein: 24, calories: 320, time: "08:10" },
     { id: "2", name: "Frango, arroz e salada", protein: 42, calories: 510, time: "12:45" },
@@ -113,14 +115,14 @@ function App() {
   const bmi = calculateBmi(profile.weightKg, profile.heightCm);
   const protein = meals.reduce((total, meal) => total + meal.protein, 0);
   const caloriesIn = meals.reduce((total, meal) => total + meal.calories, 0);
-  const proteinGoal = proteinTarget(profile.weightKg);
+  const proteinGoal = profile.proteinGoalG;
   const completedExercises = exercises.filter((exercise) => exercise.completed).length;
   const workoutMet = exercises.length
     ? exercises.reduce((total, exercise) => total + exercise.met, 0) / exercises.length
     : 4;
   const caloriesBurned = calorieBurn(workoutMet, profile.weightKg, workout.elapsedSeconds);
   const weeklyGoals = [
-    { label: "Treinar 3 vezes", value: 2, goal: 3, icon: Dumbbell },
+    { label: `${profile.weeklyExerciseMinutes} min de exercício`, value: Math.min(72 + Math.round(workout.elapsedSeconds / 60), profile.weeklyExerciseMinutes), goal: profile.weeklyExerciseMinutes, icon: Dumbbell },
     { label: "Bater a meta de água", value: 4, goal: 7, icon: Droplets },
     { label: "Registrar alimentação", value: 5, goal: 7, icon: Apple },
   ];
@@ -170,7 +172,7 @@ function App() {
             profile={profile}
             bmi={bmi}
             water={water}
-            waterGoal={waterGoal}
+            waterGoal={profile.waterGoalMl}
             protein={protein}
             proteinGoal={proteinGoal}
             caloriesIn={caloriesIn}
@@ -210,8 +212,6 @@ function App() {
           <ProfileView
             profile={profile}
             setProfile={setProfile}
-            waterGoal={waterGoal}
-            setWaterGoal={setWaterGoal}
             onSave={async () => {
               if (userId) {
                 await Promise.all([saveProfile(userId, profile), saveWeight(userId, profile.weightKg)]);
@@ -485,16 +485,21 @@ function Badge({ emoji, title, text, earned = false }: { emoji: string; title: s
   return <div className={`badge ${earned ? "earned" : ""}`}><span>{emoji}</span><div><strong>{title}</strong><small>{text}</small></div>{earned && <Check />}</div>;
 }
 
-function ProfileView({ profile, setProfile, waterGoal, setWaterGoal, onSave, onLogout }: {
+function ProfileView({ profile, setProfile, onSave, onLogout }: {
   profile: Profile;
   setProfile: React.Dispatch<React.SetStateAction<Profile>>;
-  waterGoal: number;
-  setWaterGoal: (value: number) => void;
   onSave: () => void;
   onLogout: () => void;
 }) {
   const equipment = ["Halteres", "Puxador", "Leg press", "Bicicleta", "Transport", "Elásticos"];
+  const [customEquipment, setCustomEquipment] = useState("");
   const bmi = calculateBmi(profile.weightKg, profile.heightCm);
+  const addCustomEquipment = () => {
+    const understood = understandEquipment(customEquipment);
+    if (!understood || profile.equipment.some((item) => item.toLocaleLowerCase() === understood.toLocaleLowerCase())) return;
+    setProfile({ ...profile, equipment: [...profile.equipment, understood] });
+    setCustomEquipment("");
+  };
   return (
     <div className="page">
       <div className="page-heading"><div><span className="eyebrow neutral">Personalização</span><h1>Seu perfil</h1><p>Esses dados deixam os cálculos e treinos mais adequados para você.</p></div><button className="logout-button" onClick={onLogout}><LogOut /> Sair</button></div>
@@ -513,9 +518,16 @@ function ProfileView({ profile, setProfile, waterGoal, setWaterGoal, onSave, onL
             <label className="field"><span>Meta de peso (kg)</span><input type="number" step="0.1" value={profile.goalWeightKg} onChange={(event) => setProfile({ ...profile, goalWeightKg: Number(event.target.value) })} /></label>
             <label className="field"><span>Atividade atual</span><select value={profile.activityLevel} onChange={(event) => setProfile({ ...profile, activityLevel: event.target.value as Profile["activityLevel"] })}><option value="low">Sedentária</option><option value="light">Levemente ativa</option><option value="moderate">Moderadamente ativa</option><option value="high">Muito ativa</option></select></label>
           </div></div>
-          <div className="form-section"><div className="section-title"><Dumbbell /><div><h3>Equipamentos disponíveis</h3><p>O plano inteligente usará somente o que você marcar.</p></div></div><div className="equipment-options">{equipment.map((item) => <button key={item} className={profile.equipment.includes(item) ? "selected" : ""} onClick={() => setProfile({ ...profile, equipment: profile.equipment.includes(item) ? profile.equipment.filter((equipmentItem) => equipmentItem !== item) : [...profile.equipment, item] })}>{profile.equipment.includes(item) && <Check />}{item}</button>)}</div></div>
+          <div className="form-section"><div className="section-title"><Dumbbell /><div><h3>Equipamentos disponíveis</h3><p>Marque os mais comuns ou escreva como você conhece. A IA identifica nomes equivalentes e adapta o treino.</p></div></div>
+            <div className="equipment-options">{equipment.map((item) => <button type="button" key={item} className={profile.equipment.includes(item) ? "selected" : ""} onClick={() => setProfile({ ...profile, equipment: profile.equipment.includes(item) ? profile.equipment.filter((equipmentItem) => equipmentItem !== item) : [...profile.equipment, item] })}>{profile.equipment.includes(item) && <Check />}{item}</button>)}</div>
+            <div className="equipment-entry"><div className="input-suffix"><input value={customEquipment} onChange={(event) => setCustomEquipment(event.target.value)} onKeyDown={(event) => event.key === "Enter" && (event.preventDefault(), addCustomEquipment())} placeholder="Ex.: cadeira extensora, air walker, máquina de peito..." /><button type="button" onClick={addCustomEquipment}><Plus /> Adicionar</button></div></div>
+            <div className="equipment-tags">{profile.equipment.filter((item) => !equipment.includes(item)).map((item) => <span key={item}>{item}<button type="button" aria-label={`Remover ${item}`} onClick={() => setProfile({ ...profile, equipment: profile.equipment.filter((current) => current !== item) })}><X /></button></span>)}</div>
+          </div>
           <div className="form-section"><div className="section-title"><Settings2 /><div><h3>Metas e cuidados</h3><p>Você pode ajustar quando quiser.</p></div></div><div className="form-grid">
-            <label className="field"><span>Meta diária de água (ml)</span><input type="number" step="250" value={waterGoal} onChange={(event) => setWaterGoal(Number(event.target.value))} /></label>
+            <label className="field"><span>Meta diária de água (ml)</span><input type="number" min="250" step="250" value={profile.waterGoalMl} onChange={(event) => setProfile({ ...profile, waterGoalMl: Number(event.target.value) })} /></label>
+            <label className="field"><span>Meta diária de proteína (g)</span><input type="number" min="10" step="5" value={profile.proteinGoalG} onChange={(event) => setProfile({ ...profile, proteinGoalG: Number(event.target.value) })} /></label>
+            <label className="field"><span>Exercício por semana (min)</span><input type="number" min="10" step="10" value={profile.weeklyExerciseMinutes} onChange={(event) => setProfile({ ...profile, weeklyExerciseMinutes: Number(event.target.value) })} /></label>
+            <label className="field"><span>Meta de peso (kg)</span><input type="number" min="20" step="0.1" value={profile.goalWeightKg} onChange={(event) => setProfile({ ...profile, goalWeightKg: Number(event.target.value) })} /></label>
             <label className="field wide"><span>Limitações ou observações</span><textarea value={profile.limitations} onChange={(event) => setProfile({ ...profile, limitations: event.target.value })} placeholder="Ex.: dor no joelho, baixa resistência..." /></label>
           </div></div>
           <button className="primary-button save-profile" onClick={onSave}>Salvar alterações <Check /></button>
