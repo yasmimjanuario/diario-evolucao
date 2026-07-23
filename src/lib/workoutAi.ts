@@ -1,10 +1,24 @@
 import type { Exercise, Profile } from "../types";
 import { supabase } from "./supabase";
+import { searchExerciseLibrary } from "./exerciseMedia";
 
 type GenerateWorkoutResponse = {
   exercises?: Exercise[];
   error?: string;
 };
+
+export async function enrichExercisesWithMedia(exercises: Exercise[]): Promise<Exercise[]> {
+  return Promise.all(exercises.map(async (exercise) => {
+    if (exercise.media?.length) return exercise;
+    const matches = await searchExerciseLibrary(exercise.name).catch(() => []);
+    const best = matches.find((item) => item.media?.length);
+    return best ? {
+      ...exercise,
+      media: best.media,
+      instructions: exercise.instructions?.length ? exercise.instructions : best.instructions,
+    } : exercise;
+  }));
+}
 
 export async function generateAiWorkout(profile: Profile): Promise<Exercise[]> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -24,5 +38,5 @@ export async function generateAiWorkout(profile: Profile): Promise<Exercise[]> {
     throw new Error(result.error ?? "Não foi possível gerar o plano agora.");
   }
   if (!result.exercises?.length) throw new Error("A IA não retornou exercícios válidos.");
-  return result.exercises;
+  return enrichExercisesWithMedia(result.exercises);
 }
