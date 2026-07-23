@@ -36,6 +36,40 @@ const foods: FoodReference[] = [
 const normalize = (value: string) =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
+export type FoodSuggestion = {
+  label: string;
+  description: string;
+  grams: number;
+};
+
+export function getFoodSuggestions(query: string): FoodSuggestion[] {
+  const normalized = normalize(query).trim();
+  if (normalized.length < 2) return [];
+  const tokens = normalized.split(/\s+/).filter((token) => !["pequeno", "pequena", "medio", "media", "grande", "porcao"].includes(token));
+  const requestedSize = /\b(pequeno|pequena)\b/.test(normalized) ? 0.7
+    : /\bgrande\b/.test(normalized) ? 1.4
+    : null;
+  const matches = foods.filter((food) =>
+    tokens.some((token) =>
+      normalize(food.label).includes(token) ||
+      food.aliases.some((alias) => normalize(alias).includes(token)),
+    ),
+  ).slice(0, 5);
+
+  return matches.flatMap((food) => {
+    const portions = requestedSize ? [requestedSize] : [0.7, 1, 1.4];
+    return portions.map((factor) => {
+      const size = factor < 1 ? "pequena" : factor > 1 ? "grande" : "média";
+      const grams = Math.round(food.defaultGrams * factor);
+      return {
+        label: `${food.label.charAt(0).toUpperCase()}${food.label.slice(1)} — porção ${size}`,
+        description: `${food.label} ${size}`,
+        grams,
+      };
+    });
+  }).slice(0, 6);
+}
+
 const sizeFactor = (description: string) => {
   const value = normalize(description);
   if (/\b(pequeno|pequena|pouco|meia porcao)\b/.test(value)) return 0.7;
