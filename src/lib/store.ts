@@ -15,6 +15,9 @@ export async function saveProfile(userId: string, profile: Profile) {
     activity_level: profile.activityLevel,
     equipment: profile.equipment,
     limitations: profile.limitations,
+    water_goal_ml: profile.waterGoalMl,
+    protein_goal_g: profile.proteinGoalG,
+    weekly_exercise_minutes: profile.weeklyExerciseMinutes,
     updated_at: new Date().toISOString(),
   });
 }
