@@ -83,7 +83,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       if (exerciseDbResponse.ok) {
         const items = arrayFromPayload(await exerciseDbResponse.json());
         const exerciseDbResults = items.flatMap((item, index) => {
-          const name = alias?.name ?? text(item.name) || text(item.exerciseName);
+          const name = alias?.name ?? (text(item.name) || text(item.exerciseName));
           if (!name) return [];
           const instructions = stringList(item.instructions)
             .flatMap((instruction) => instruction.split(/\n+/))
@@ -131,7 +131,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       const matchingTranslation = exercises.find((exercise) =>
         text(exercise.name).toLocaleLowerCase("pt-BR").includes(normalizedQuery));
       const translated = matchingTranslation ?? exercises.find((exercise) => exercise.language === 2) ?? exercises[0] ?? item;
-      const name = matchingTranslation ? text(translated.name) : alias?.name ?? text(translated.name) || text(item.name);
+      const name = matchingTranslation ? text(translated.name) : alias?.name ?? (text(translated.name) || text(item.name));
 
       const videos = (Array.isArray(item.videos) ? item.videos : []).map((entry) => {
         const video = entry as WgerItem;
