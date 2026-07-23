@@ -268,15 +268,6 @@ function AuthScreen({ onDemo }: { onDemo: () => void }) {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
 
-  const loginGoogle = async () => {
-    setError("");
-    const { error: authError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
-    if (authError) setError(authError.message);
-  };
-
   const loginEmail = async () => {
     if (!email) return;
     setError("");
@@ -311,10 +302,6 @@ function AuthScreen({ onDemo }: { onDemo: () => void }) {
           <span className="eyebrow neutral">Bem-vinda ao Evolua</span>
           <h2>Comece seu diário</h2>
           <p>Entre para acompanhar sua jornada com privacidade.</p>
-          <button className="google-button" onClick={loginGoogle} disabled={!supabaseConfigured}>
-            <span className="google-g">G</span> Continuar com Google
-          </button>
-          <div className="divider"><span>ou receba um link por e-mail</span></div>
           {sent ? (
             <div className="success-message"><Mail /><div><strong>Confira sua caixa de entrada</strong><span>Enviamos um link de acesso para {email}.</span></div></div>
           ) : (
