@@ -50,7 +50,7 @@ import {
 import { addMeal, loadUserData, saveProfile, saveWater, saveWeight } from "./lib/store";
 import { estimateNutrition, getFoodSuggestions } from "./lib/nutrition";
 import { searchPublicFoods, type PublicFoodSuggestion } from "./lib/foodApi";
-import { generateAiWorkout } from "./lib/workoutAi";
+import { enrichExercisesWithMedia, generateAiWorkout } from "./lib/workoutAi";
 import { searchExerciseLibrary, type ExerciseSuggestion } from "./lib/exerciseMedia";
 import type { Exercise, Meal, Profile, Tab, WeightLog, WorkoutSession } from "./types";
 
@@ -186,7 +186,11 @@ function App() {
         setWater(data.water);
         setMeals(data.meals);
         setWeightHistory(data.weights);
-        setExercises(nextProfile.onboardingCompleted ? generateWorkout(nextProfile) : []);
+        const initialExercises = nextProfile.onboardingCompleted ? generateWorkout(nextProfile) : [];
+        setExercises(initialExercises);
+        if (initialExercises.length) {
+          void enrichExercisesWithMedia(initialExercises).then((enriched) => active && setExercises(enriched));
+        }
       })
       .catch((error: Error) => active && setDataError(error.message))
       .finally(() => active && setLoadingData(false));
@@ -233,7 +237,9 @@ function App() {
           await Promise.all([saveProfile(userId, completedProfile), saveWeight(userId, completedProfile.weightKg)]);
           setProfile(completedProfile);
           setWeightHistory([{ weight: completedProfile.weightKg, date: new Date().toISOString() }]);
-          setExercises(generateWorkout(completedProfile));
+          const initialExercises = generateWorkout(completedProfile);
+          setExercises(initialExercises);
+          void enrichExercisesWithMedia(initialExercises).then(setExercises);
         }}
         onLogout={() => void supabase.auth.signOut()}
       />
