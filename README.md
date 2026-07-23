@@ -6,7 +6,7 @@ Web app mobile-first para acompanhar treino, peso, água, alimentação, proteí
 
 1. Copie `.env.example` para `.env.local` e informe as chaves públicas do Supabase.
 2. Execute `supabase/schema.sql` no SQL Editor do projeto Supabase.
-3. No Supabase Authentication, habilite Email OTP.
+3. No Supabase Authentication, habilite o provedor Email com acesso por senha.
 4. Instale e inicie:
 
 ```bash
