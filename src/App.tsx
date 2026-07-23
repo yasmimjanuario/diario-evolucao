@@ -17,6 +17,7 @@ import {
   Gauge,
   Home,
   LogOut,
+  LockKeyhole,
   Mail,
   Pause,
   Play,
@@ -326,22 +327,43 @@ function Brand({ compact = false }: { compact?: boolean }) {
 
 function AuthScreen() {
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const loginEmail = async () => {
-    if (!email) return;
+  const submitAuth = async () => {
+    if (!email || (mode !== "forgot" && password.length < 6)) return;
     setError("");
+    setMessage("");
     if (!supabaseConfigured) {
       setError("O acesso ainda não foi configurado. As variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY estão ausentes no deploy.");
       return;
     }
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
-    });
-    if (authError) setError(authError.message);
-    else setSent(true);
+    setLoading(true);
+    if (mode === "forgot") {
+      const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+      if (authError) setError(authError.message);
+      else setMessage("Enviamos um link para você criar uma nova senha.");
+    } else if (mode === "signup") {
+      const { data, error: authError } = await supabase.auth.signUp({ email, password });
+      if (authError) setError(authError.message);
+      else if (data.session) setMessage("Conta criada com sucesso.");
+      else setMessage("Conta criada. Confirme seu e-mail para entrar.");
+    } else {
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) setError(authError.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : authError.message);
+    }
+    setLoading(false);
+  };
+
+  const changeMode = (nextMode: "login" | "signup" | "forgot") => {
+    setMode(nextMode);
+    setError("");
+    setMessage("");
   };
 
   return (
@@ -362,24 +384,32 @@ function AuthScreen() {
       </section>
 
       <section className="auth-form-wrap">
-        <form className="auth-form" onSubmit={(event) => { event.preventDefault(); void loginEmail(); }}>
+        <form className="auth-form" onSubmit={(event) => { event.preventDefault(); void submitAuth(); }}>
           <div className="mobile-auth-brand"><Brand /></div>
           <span className="eyebrow neutral">Bem-vinda ao Evolua</span>
-          <h2>Comece seu diário</h2>
-          <p>Entre para acompanhar sua jornada com privacidade.</p>
-          {sent ? (
-            <div className="success-message"><Mail /><div><strong>Confira sua caixa de entrada</strong><span>Enviamos um link de acesso para {email}.</span></div></div>
-          ) : (
-            <>
-              <label className="field">
-                <span>Seu e-mail</span>
-                <div className="input-with-icon"><Mail size={18} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@email.com" /></div>
-              </label>
-              <button type="submit" className="primary-button" disabled={!email}>Enviar link de acesso <ArrowRight size={18} /></button>
-            </>
+          <h2>{mode === "signup" ? "Crie sua conta" : mode === "forgot" ? "Recupere sua senha" : "Entre no seu diário"}</h2>
+          <p>{mode === "signup" ? "Comece sua jornada com seus dados protegidos." : mode === "forgot" ? "Informe seu e-mail para definir uma nova senha." : "Use seu e-mail e senha para continuar."}</p>
+          <label className="field">
+            <span>Seu e-mail</span>
+            <div className="input-with-icon"><Mail size={18} /><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@email.com" /></div>
+          </label>
+          {mode !== "forgot" && (
+            <label className="field">
+              <span>Senha</span>
+              <div className="input-with-icon"><LockKeyhole size={18} /><input type="password" minLength={6} autoComplete={mode === "signup" ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mínimo de 6 caracteres" /></div>
+            </label>
           )}
+          <button type="submit" className="primary-button" disabled={loading || !email || (mode !== "forgot" && password.length < 6)}>
+            {loading ? "Aguarde..." : mode === "signup" ? "Criar conta" : mode === "forgot" ? "Enviar recuperação" : "Entrar"} <ArrowRight size={18} />
+          </button>
+          {message && <div className="success-message"><Mail /><div><strong>{message}</strong></div></div>}
           {error && <p className="form-error">{error}</p>}
-          <p className="login-help">Ao sair, volte a esta tela e solicite um novo link para entrar novamente. Não é necessário criar senha.</p>
+          <div className="auth-actions">
+            {mode === "login" && <button type="button" className="text-button" onClick={() => changeMode("forgot")}>Esqueci minha senha</button>}
+            <button type="button" className="text-button" onClick={() => changeMode(mode === "signup" ? "login" : mode === "login" ? "signup" : "login")}>
+              {mode === "signup" ? "Já tenho conta" : mode === "login" ? "Criar uma conta" : "Voltar para o login"}
+            </button>
+          </div>
           <small className="privacy-copy">Ao entrar, você concorda com os termos e a política de privacidade. Seus dados de saúde ficam protegidos.</small>
         </form>
       </section>
