@@ -42,6 +42,7 @@ export type Exercise = {
   met: number;
   weight: number;
   completed: boolean;
+  instructions?: string[];
 };
 
 export type WorkoutSession = {

@@ -16,6 +16,8 @@ import {
   Flame,
   Gauge,
   Home,
+  Eye,
+  EyeOff,
   LogOut,
   LockKeyhole,
   Mail,
@@ -47,6 +49,7 @@ import {
 import { addMeal, loadUserData, saveProfile, saveWater, saveWeight } from "./lib/store";
 import { estimateNutrition, getFoodSuggestions } from "./lib/nutrition";
 import { searchPublicFoods, type PublicFoodSuggestion } from "./lib/foodApi";
+import { generateAiWorkout } from "./lib/workoutAi";
 import type { Exercise, Meal, Profile, Tab, WeightLog, WorkoutSession } from "./types";
 
 const emptyProfile: Profile = {
@@ -74,6 +77,54 @@ const formatSeconds = (seconds: number) => {
 const todayLabel = () =>
   new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
 
+const authErrorMessage = (message: string) => {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("email rate limit exceeded") || normalized.includes("rate limit")) {
+    return "Muitas tentativas de envio foram feitas. Aguarde alguns minutos antes de tentar novamente.";
+  }
+  if (normalized.includes("user already registered")) return "Este e-mail já possui uma conta. Entre com sua senha ou use “Esqueci minha senha”.";
+  if (normalized.includes("invalid login credentials")) return "E-mail ou senha incorretos.";
+  if (normalized.includes("password should be at least")) return "A senha deve ter pelo menos 6 caracteres.";
+  return message;
+};
+
+function PasswordInput({
+  value,
+  onChange,
+  autoComplete,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: "new-password" | "current-password";
+  placeholder?: string;
+}) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="input-with-icon password-input">
+      <LockKeyhole size={18} />
+      <input
+        type={visible ? "text" : "password"}
+        minLength={6}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        className="password-toggle"
+        onClick={() => setVisible((current) => !current)}
+        aria-label={visible ? "Ocultar senha" : "Mostrar senha"}
+        title={visible ? "Ocultar senha" : "Mostrar senha"}
+      >
+        {visible ? <EyeOff size={19} /> : <Eye size={19} />}
+      </button>
+    </div>
+  );
+}
+
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [recoveringPassword, setRecoveringPassword] = useState(false);
@@ -93,6 +144,8 @@ function App() {
     running: false,
   });
   const [showMeal, setShowMeal] = useState(false);
+  const [generatingWorkout, setGeneratingWorkout] = useState(false);
+  const [workoutError, setWorkoutError] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -194,9 +247,18 @@ function App() {
     setExercises((current) => current.map((exercise) => (exercise.id === id ? { ...exercise, ...changes } : exercise)));
   };
 
-  const regenerateWorkout = () => {
-    setExercises(generateWorkout(profile));
-    setWorkout({ startedAt: null, elapsedSeconds: 0, running: false });
+  const regenerateWorkout = async () => {
+    if (generatingWorkout) return;
+    setGeneratingWorkout(true);
+    setWorkoutError("");
+    try {
+      setExercises(await generateAiWorkout(profile));
+      setWorkout({ startedAt: null, elapsedSeconds: 0, running: false });
+    } catch (error) {
+      setWorkoutError(error instanceof Error ? error.message : "Não foi possível gerar o plano.");
+    } finally {
+      setGeneratingWorkout(false);
+    }
   };
 
   return (
@@ -256,6 +318,8 @@ function App() {
             }
             onReset={() => setWorkout({ startedAt: null, elapsedSeconds: 0, running: false })}
             onRegenerate={regenerateWorkout}
+            generating={generatingWorkout}
+            error={workoutError}
           />
         )}
 
@@ -322,7 +386,7 @@ function ResetPasswordScreen({ onDone }: { onDone: () => void }) {
     setError("");
     const { error: authError } = await supabase.auth.updateUser({ password });
     setLoading(false);
-    if (authError) setError(authError.message);
+    if (authError) setError(authErrorMessage(authError.message));
     else onDone();
   };
 
@@ -335,8 +399,8 @@ function ResetPasswordScreen({ onDone }: { onDone: () => void }) {
           <span className="eyebrow neutral">Recuperação de acesso</span>
           <h2>Crie uma nova senha</h2>
           <p>Seus registros e seu progresso continuarão na mesma conta.</p>
-          <label className="field"><span>Nova senha</span><div className="input-with-icon"><LockKeyhole size={18} /><input type="password" minLength={6} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></div></label>
-          <label className="field"><span>Confirme a nova senha</span><div className="input-with-icon"><LockKeyhole size={18} /><input type="password" minLength={6} autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></div></label>
+          <label className="field"><span>Nova senha</span><PasswordInput value={password} onChange={setPassword} autoComplete="new-password" /></label>
+          <label className="field"><span>Confirme a nova senha</span><PasswordInput value={confirmation} onChange={setConfirmation} autoComplete="new-password" /></label>
           <button className="primary-button" disabled={loading || password.length < 6 || password !== confirmation}>{loading ? "Salvando..." : "Salvar nova senha"} <ArrowRight size={18} /></button>
           {confirmation && password !== confirmation && <p className="form-error">As senhas não coincidem.</p>}
           {error && <p className="form-error">{error}</p>}
@@ -385,16 +449,16 @@ function AuthScreen() {
       const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin,
       });
-      if (authError) setError(authError.message);
+      if (authError) setError(authErrorMessage(authError.message));
       else setMessage("Enviamos um link para você criar uma nova senha.");
     } else if (mode === "signup") {
       const { data, error: authError } = await supabase.auth.signUp({ email, password });
-      if (authError) setError(authError.message);
+      if (authError) setError(authErrorMessage(authError.message));
       else if (data.session) setMessage("Conta criada com sucesso.");
       else setMessage("Conta criada. Confirme seu e-mail para entrar.");
     } else {
       const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError) setError(authError.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : authError.message);
+      if (authError) setError(authErrorMessage(authError.message));
     }
     setLoading(false);
   };
@@ -435,7 +499,7 @@ function AuthScreen() {
           {mode !== "forgot" && (
             <label className="field">
               <span>Senha</span>
-              <div className="input-with-icon"><LockKeyhole size={18} /><input type="password" minLength={6} autoComplete={mode === "signup" ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mínimo de 6 caracteres" /></div>
+              <PasswordInput value={password} onChange={setPassword} autoComplete={mode === "signup" ? "new-password" : "current-password"} placeholder="Mínimo de 6 caracteres" />
             </label>
           )}
           <button type="submit" className="primary-button" disabled={loading || !email || (mode !== "forgot" && password.length < 6)}>
@@ -599,7 +663,7 @@ function MetricCard({ icon: Icon, tone, label, value, meta, progress, action, fo
   );
 }
 
-function WorkoutView({ exercises, workout, calories, updateExercise, onToggleTimer, onReset, onRegenerate }: {
+function WorkoutView({ exercises, workout, calories, updateExercise, onToggleTimer, onReset, onRegenerate, generating, error }: {
   exercises: Exercise[];
   workout: WorkoutSession;
   calories: number;
@@ -607,14 +671,19 @@ function WorkoutView({ exercises, workout, calories, updateExercise, onToggleTim
   updateExercise: (id: string, changes: Partial<Exercise>) => void;
   onToggleTimer: () => void;
   onReset: () => void;
-  onRegenerate: () => void;
+  onRegenerate: () => Promise<void>;
+  generating: boolean;
+  error: string;
 }) {
   return (
     <div className="page">
       <div className="page-heading workout-heading">
         <div><span className="eyebrow neutral">Plano inteligente • adaptação</span><h1>Seu treino de hoje</h1><p>Exercícios escolhidos conforme seus equipamentos e condicionamento.</p></div>
-        <button className="secondary-button" onClick={onRegenerate}><Sparkles /> Gerar novo plano</button>
+        <button className="secondary-button" onClick={() => void onRegenerate()} disabled={generating}>
+          <Sparkles /> {generating ? "Criando seu plano..." : "Gerar novo plano"}
+        </button>
       </div>
+      {error && <div className="workout-error" role="alert">{error}</div>}
 
       <section className={`timer-card ${workout.running ? "active" : ""}`}>
         <div><span className="timer-status"><span />{workout.running ? "Treino em andamento" : workout.elapsedSeconds ? "Treino pausado" : "Pronta para começar?"}</span><strong>{formatSeconds(workout.elapsedSeconds)}</strong></div>
@@ -636,6 +705,12 @@ function WorkoutView({ exercises, workout, calories, updateExercise, onToggleTim
                 <div><span>Repetições</span><strong>{exercise.reps}</strong></div>
                 <label><span>Carga usada</span><div><input type="number" min="0" step="0.5" value={exercise.weight} onChange={(event) => updateExercise(exercise.id, { weight: Number(event.target.value) })} /><b>kg</b></div></label>
               </div>
+              {exercise.instructions?.length ? (
+                <details className="exercise-instructions">
+                  <summary>Como executar</summary>
+                  <ol>{exercise.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}</ol>
+                </details>
+              ) : null}
             </div>
           </article>
         ))}
@@ -716,9 +791,9 @@ function ProfileView({ profile, setProfile, onSave, onLogout, onboarding = false
           <div className="form-section"><div className="section-title"><UserRound /><div><h3>Dados pessoais</h3><p>Usados para estimativas individuais.</p></div></div><div className="form-grid">
             <label className="field"><span>Como quer ser chamada?</span><input value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} /></label>
             <label className="field"><span>Data de nascimento</span><input type="date" value={profile.birthDate} onChange={(event) => setProfile({ ...profile, birthDate: event.target.value })} /></label>
-            <label className="field"><span>Altura (cm)</span><input type="number" value={profile.heightCm} onChange={(event) => setProfile({ ...profile, heightCm: Number(event.target.value) })} /></label>
-            <label className="field"><span>Peso atual (kg)</span><input type="number" step="0.1" value={profile.weightKg} onChange={(event) => setProfile({ ...profile, weightKg: Number(event.target.value) })} /></label>
-            <label className="field"><span>Meta de peso (kg)</span><input type="number" step="0.1" value={profile.goalWeightKg} onChange={(event) => setProfile({ ...profile, goalWeightKg: Number(event.target.value) })} /></label>
+            <label className="field"><span>Altura (cm)</span><input type="number" value={profile.heightCm || ""} onChange={(event) => setProfile({ ...profile, heightCm: Number(event.target.value) })} /></label>
+            <label className="field"><span>Peso atual (kg)</span><input type="number" step="0.1" value={profile.weightKg || ""} onChange={(event) => setProfile({ ...profile, weightKg: Number(event.target.value) })} /></label>
+            <label className="field"><span>Meta de peso (kg)</span><input type="number" step="0.1" value={profile.goalWeightKg || ""} onChange={(event) => setProfile({ ...profile, goalWeightKg: Number(event.target.value) })} /></label>
             <label className="field"><span>Atividade atual</span><select value={profile.activityLevel} onChange={(event) => setProfile({ ...profile, activityLevel: event.target.value as Profile["activityLevel"] })}><option value="low">Sedentária</option><option value="light">Levemente ativa</option><option value="moderate">Moderadamente ativa</option><option value="high">Muito ativa</option></select></label>
           </div></div>
           <div className="form-section"><div className="section-title"><Dumbbell /><div><h3>Equipamentos disponíveis</h3><p>Marque os mais comuns ou escreva como você conhece. A IA identifica nomes equivalentes e adapta o treino.</p></div></div>
@@ -730,7 +805,7 @@ function ProfileView({ profile, setProfile, onSave, onLogout, onboarding = false
             <label className="field"><span>Meta diária de água (ml)</span><input type="number" min="250" step="250" value={profile.waterGoalMl} onChange={(event) => setProfile({ ...profile, waterGoalMl: Number(event.target.value) })} /></label>
             <label className="field"><span>Meta diária de proteína (g)</span><input type="number" min="10" step="5" value={profile.proteinGoalG} onChange={(event) => setProfile({ ...profile, proteinGoalG: Number(event.target.value) })} /></label>
             <label className="field"><span>Exercício por semana (min)</span><input type="number" min="10" step="10" value={profile.weeklyExerciseMinutes} onChange={(event) => setProfile({ ...profile, weeklyExerciseMinutes: Number(event.target.value) })} /></label>
-            <label className="field"><span>Meta de peso (kg)</span><input type="number" min="20" step="0.1" value={profile.goalWeightKg} onChange={(event) => setProfile({ ...profile, goalWeightKg: Number(event.target.value) })} /></label>
+            <label className="field"><span>Meta de peso (kg)</span><input type="number" min="20" step="0.1" value={profile.goalWeightKg || ""} onChange={(event) => setProfile({ ...profile, goalWeightKg: Number(event.target.value) })} /></label>
             <label className="field wide"><span>Limitações ou observações</span><textarea value={profile.limitations} onChange={(event) => setProfile({ ...profile, limitations: event.target.value })} placeholder="Ex.: dor no joelho, baixa resistência..." /></label>
           </div></div>
           <button className="primary-button save-profile" disabled={saveStatus === "saving"} onClick={async () => {

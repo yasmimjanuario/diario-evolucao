@@ -31,6 +31,8 @@ const library: Exercise[] = [
   { id: "wall-push", name: "Flexão na parede", muscle: "Peito", equipment: "Peso corporal", sets: 3, reps: "8–12", restSeconds: 60, met: 3.8, weight: 0, completed: false },
   { id: "bridge", name: "Ponte de glúteos", muscle: "Glúteos", equipment: "Peso corporal", sets: 3, reps: "12–15", restSeconds: 45, met: 4, weight: 0, completed: false },
   { id: "march", name: "Marcha estacionária", muscle: "Cardio", equipment: "Peso corporal", sets: 3, reps: "2 min", restSeconds: 45, met: 4.5, weight: 0, completed: false },
+  { id: "step-touch", name: "Passos laterais alternados", muscle: "Cardio", equipment: "Peso corporal", sets: 3, reps: "2 min", restSeconds: 45, met: 4.2, weight: 0, completed: false },
+  { id: "low-impact-jacks", name: "Polichinelo sem salto", muscle: "Cardio", equipment: "Peso corporal", sets: 3, reps: "90 s", restSeconds: 45, met: 4.8, weight: 0, completed: false },
   { id: "db-row", name: "Remada unilateral", muscle: "Costas", equipment: "Halteres", sets: 3, reps: "10–12", restSeconds: 60, met: 5, weight: 4, completed: false },
   { id: "db-deadlift", name: "Levantamento romeno", muscle: "Posterior", equipment: "Halteres", sets: 3, reps: "10–12", restSeconds: 75, met: 5.5, weight: 6, completed: false },
   { id: "db-press", name: "Desenvolvimento", muscle: "Ombros", equipment: "Halteres", sets: 3, reps: "8–10", restSeconds: 60, met: 5, weight: 3, completed: false },
@@ -81,11 +83,15 @@ export const generateWorkout = (profile: Profile) => {
   const allowed = new Set(["Peso corporal", ...understood]);
   const selected = library.filter((exercise) => allowed.has(exercise.equipment));
   const balanced: Exercise[] = [];
-  for (const group of ["Pernas", "Costas", "Peito", "Glúteos", "Ombros", "Posterior", "Cardio"]) {
-    const match = selected.find((exercise) => exercise.muscle === group);
+  const daySeed = Math.floor(Date.now() / 86_400_000);
+  for (const group of ["Cardio", "Pernas", "Costas", "Peito", "Glúteos", "Ombros", "Posterior"]) {
+    const candidates = selected.filter((exercise) => exercise.muscle === group);
+    const match = candidates.length ? candidates[daySeed % candidates.length] : undefined;
     if (match && balanced.length < 6) balanced.push({ ...match });
   }
-  return balanced.length >= 4 ? balanced : library.slice(0, 4).map((item) => ({ ...item }));
+  return balanced.length >= 4
+    ? balanced
+    : [library[daySeed % 3 + 3], ...library.slice(0, 4).filter((item) => item.muscle !== "Cardio")].map((item) => ({ ...item }));
 };
 
 export const proteinTarget = (weightKg: number) => Math.round(weightKg * 1.5);
