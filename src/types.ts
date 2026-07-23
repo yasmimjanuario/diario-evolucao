@@ -11,6 +11,9 @@ export type Profile = {
   activityLevel: "low" | "light" | "moderate" | "high";
   equipment: string[];
   limitations: string;
+  waterGoalMl: number;
+  proteinGoalG: number;
+  weeklyExerciseMinutes: number;
 };
 
 export type Meal = {
