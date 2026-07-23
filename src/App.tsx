@@ -76,6 +76,7 @@ const todayLabel = () =>
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [tab, setTab] = useState<Tab>("hoje");
   const [profile, setProfile] = useState<Profile>(emptyProfile);
@@ -98,8 +99,9 @@ function App() {
       setSession(data.session);
       setLoadingAuth(false);
     });
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+      if (event === "PASSWORD_RECOVERY") setRecoveringPassword(true);
       setLoadingAuth(false);
     });
     return () => data.subscription.unsubscribe();
@@ -161,6 +163,7 @@ function App() {
 
   if (loadingAuth) return <Splash />;
   if (!session) return <AuthScreen />;
+  if (recoveringPassword) return <ResetPasswordScreen onDone={() => setRecoveringPassword(false)} />;
   if (loadingData) return <Splash />;
   if (dataError) return <DataError message={dataError} onLogout={() => void supabase.auth.signOut()} />;
   if (!profile.onboardingCompleted) {
@@ -303,6 +306,42 @@ function App() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function ResetPasswordScreen({ onDone }: { onDone: () => void }) {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const savePassword = async () => {
+    if (password.length < 6 || password !== confirmation) return;
+    setLoading(true);
+    setError("");
+    const { error: authError } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (authError) setError(authError.message);
+    else onDone();
+  };
+
+  return (
+    <div className="auth-page">
+      <section className="auth-visual"><Brand /><div className="auth-copy"><h1>Uma nova senha, sua jornada <em>preservada.</em></h1></div></section>
+      <section className="auth-form-wrap">
+        <form className="auth-form" onSubmit={(event) => { event.preventDefault(); void savePassword(); }}>
+          <div className="mobile-auth-brand"><Brand /></div>
+          <span className="eyebrow neutral">Recuperação de acesso</span>
+          <h2>Crie uma nova senha</h2>
+          <p>Seus registros e seu progresso continuarão na mesma conta.</p>
+          <label className="field"><span>Nova senha</span><div className="input-with-icon"><LockKeyhole size={18} /><input type="password" minLength={6} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></div></label>
+          <label className="field"><span>Confirme a nova senha</span><div className="input-with-icon"><LockKeyhole size={18} /><input type="password" minLength={6} autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></div></label>
+          <button className="primary-button" disabled={loading || password.length < 6 || password !== confirmation}>{loading ? "Salvando..." : "Salvar nova senha"} <ArrowRight size={18} /></button>
+          {confirmation && password !== confirmation && <p className="form-error">As senhas não coincidem.</p>}
+          {error && <p className="form-error">{error}</p>}
+        </form>
+      </section>
     </div>
   );
 }
