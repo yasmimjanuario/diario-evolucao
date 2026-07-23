@@ -17,6 +17,7 @@ create table if not exists public.profiles (
   water_goal_ml integer not null default 2000 check (water_goal_ml between 250 and 10000),
   protein_goal_g integer not null default 100 check (protein_goal_g between 10 and 500),
   weekly_exercise_minutes integer not null default 150 check (weekly_exercise_minutes between 10 and 3000),
+  onboarding_completed boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -24,15 +25,20 @@ create table if not exists public.profiles (
 -- Migração segura para projetos que já executaram uma versão anterior do schema.
 alter table public.profiles add column if not exists protein_goal_g integer not null default 100;
 alter table public.profiles add column if not exists weekly_exercise_minutes integer not null default 150;
+alter table public.profiles add column if not exists onboarding_completed boolean not null default false;
 
 create table if not exists public.weight_logs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   logged_on date not null default current_date,
+  logged_at timestamptz not null default now(),
   weight_kg numeric(6,2) not null check (weight_kg > 0),
-  created_at timestamptz not null default now(),
-  unique (user_id, logged_on)
+  created_at timestamptz not null default now()
 );
+
+-- Migração: pesagens livres, inclusive mais de uma no mesmo dia.
+alter table public.weight_logs add column if not exists logged_at timestamptz not null default now();
+alter table public.weight_logs drop constraint if exists weight_logs_user_id_logged_on_key;
 
 create table if not exists public.water_logs (
   id uuid primary key default gen_random_uuid(),
