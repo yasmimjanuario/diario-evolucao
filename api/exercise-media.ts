@@ -12,10 +12,45 @@ type ApiResponse = {
 type WgerItem = Record<string, unknown>;
 
 const text = (value: unknown) => typeof value === "string" ? value : "";
+const itemLabel = (value: unknown) => {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return "";
+  const item = value as WgerItem;
+  return text(item.name) || text(item.name_en) || text(item.label);
+};
+const searchAliases: Record<string, { search: string; name: string }> = {
+  extensora: { search: "leg extension", name: "Cadeira extensora" },
+  flexora: { search: "leg curl", name: "Cadeira flexora" },
+  agachamento: { search: "squat", name: "Agachamento" },
+  supino: { search: "bench press", name: "Supino" },
+  remada: { search: "row", name: "Remada" },
+  puxador: { search: "lat pulldown", name: "Puxador alto" },
+  abdominal: { search: "crunch", name: "Abdominal" },
+  esteira: { search: "treadmill", name: "Caminhada na esteira" },
+  bicicleta: { search: "cycling", name: "Bicicleta ergométrica" },
+};
 const absoluteUrl = (value: unknown) => {
   const url = text(value);
   if (!url) return "";
   return url.startsWith("http") ? url : `https://wger.de${url.startsWith("/") ? "" : "/"}${url}`;
+};
+const stringList = (value: unknown) => Array.isArray(value)
+  ? value.map(itemLabel).filter(Boolean)
+  : text(value) ? [text(value)] : [];
+const arrayFromPayload = (payload: unknown): WgerItem[] => {
+  if (Array.isArray(payload)) return payload as WgerItem[];
+  if (!payload || typeof payload !== "object") return [];
+  const record = payload as WgerItem;
+  for (const key of ["data", "results", "exercises"]) {
+    if (Array.isArray(record[key])) return record[key] as WgerItem[];
+  }
+  return [];
+};
+const exerciseDbMediaUrl = (value: unknown) => {
+  const url = text(value);
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  return `https://oss.exercisedb.dev${url.startsWith("/") ? "" : "/"}${url}`;
 };
 
 export default async function handler(request: ApiRequest, response: ApiResponse) {
@@ -33,10 +68,57 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   }
 
   try {
+    const normalizedQuery = query.toLocaleLowerCase("pt-BR");
+    const alias = Object.entries(searchAliases).find(([term]) => normalizedQuery.includes(term))?.[1];
+    const publicQuery = alias?.search ?? query;
+
+    try {
+      const exerciseDbUrl = new URL("https://oss.exercisedb.dev/api/v1/exercises/search");
+      exerciseDbUrl.searchParams.set("q", publicQuery);
+      exerciseDbUrl.searchParams.set("limit", "12");
+      const exerciseDbResponse = await fetch(exerciseDbUrl, {
+        headers: { Accept: "application/json", "User-Agent": "Evolua/1.0 (public exercise lookup)" },
+        signal: AbortSignal.timeout(7000),
+      });
+      if (exerciseDbResponse.ok) {
+        const items = arrayFromPayload(await exerciseDbResponse.json());
+        const exerciseDbResults = items.flatMap((item, index) => {
+          const name = alias?.name ?? text(item.name) || text(item.exerciseName);
+          if (!name) return [];
+          const instructions = stringList(item.instructions)
+            .flatMap((instruction) => instruction.split(/\n+/))
+            .map((instruction) => instruction.trim())
+            .filter(Boolean)
+            .slice(0, 6);
+          const gif = exerciseDbMediaUrl(item.gifUrl || item.gif_url || item.animationUrl);
+          const video = exerciseDbMediaUrl(item.videoUrl || item.video_url);
+          const image = exerciseDbMediaUrl(item.imageUrl || item.image_url || item.thumbnailUrl);
+          const media = [
+            video && { url: video, type: "video" as const, attribution: "ExerciseDB" },
+            gif && { url: gif, type: "image" as const, attribution: "ExerciseDB" },
+            image && { url: image, type: "image" as const, attribution: "ExerciseDB" },
+          ].filter(Boolean).slice(0, 3);
+          return [{
+            id: text(item.exerciseId) || text(item.id) || `exercisedb-${index}`,
+            name,
+            muscle: [...stringList(item.targetMuscles || item.target), ...stringList(item.bodyParts || item.bodyPart)].join(", "),
+            equipment: stringList(item.equipments || item.equipment).join(", "),
+            instructions,
+            media,
+          }];
+        });
+        if (exerciseDbResults.length) {
+          response.status(200).json({ results: exerciseDbResults.slice(0, 8), source: "ExerciseDB" });
+          return;
+        }
+      }
+    } catch {
+      // O wger abaixo mantém a busca funcionando quando a fonte principal oscila.
+    }
+
     const url = new URL("https://wger.de/api/v2/exercisebaseinfo/");
-    url.searchParams.set("language", "2");
     url.searchParams.set("limit", "30");
-    url.searchParams.set("search", query);
+    url.searchParams.set("search", publicQuery);
     const upstream = await fetch(url, {
       headers: { Accept: "application/json", "User-Agent": "Evolua/1.0 (exercise media lookup)" },
       signal: AbortSignal.timeout(8000),
@@ -46,9 +128,10 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     const payload = await upstream.json() as { results?: WgerItem[] };
     const normalized = (payload.results ?? []).flatMap((item) => {
       const exercises = Array.isArray(item.exercises) ? item.exercises as WgerItem[] : [];
-      const translated = exercises.find((exercise) => exercise.language === 2) ?? exercises[0] ?? item;
-      const name = text(translated.name) || text(item.name);
-      if (!name.toLocaleLowerCase().includes(query.toLocaleLowerCase()) && payload.results!.length > 8) return [];
+      const matchingTranslation = exercises.find((exercise) =>
+        text(exercise.name).toLocaleLowerCase("pt-BR").includes(normalizedQuery));
+      const translated = matchingTranslation ?? exercises.find((exercise) => exercise.language === 2) ?? exercises[0] ?? item;
+      const name = matchingTranslation ? text(translated.name) : alias?.name ?? text(translated.name) || text(item.name);
 
       const videos = (Array.isArray(item.videos) ? item.videos : []).map((entry) => {
         const video = entry as WgerItem;
@@ -61,7 +144,8 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       const media = [...videos, ...images].filter((entry) => entry.url).slice(0, 4);
       return name ? [{
         name,
-        equipment: Array.isArray(item.equipment) ? item.equipment.map(String).join(", ") : "",
+        muscle: Array.isArray(item.muscles) ? item.muscles.map(itemLabel).filter(Boolean).join(", ") : "",
+        equipment: Array.isArray(item.equipment) ? item.equipment.map(itemLabel).filter(Boolean).join(", ") : "",
         instructions: text(translated.description)
           .replace(/<[^>]+>/g, " ")
           .split(/[.!?]\s+/)
